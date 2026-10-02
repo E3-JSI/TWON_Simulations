@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>CSV Post Viewer</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+
+<style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h2 { text-align: center; }
+
+    .container { display: flex; gap: 20px; flex-wrap: wrap; }
+    .column {
+        flex: 1;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        padding: 12px;
+        background: #fafafa;
+        min-width: 300px;
+    }
+
+    .field-label { font-weight: bold; margin-top: 10px; }
+    textarea { width: 100%; height: 120px; }
+
+    .meta-block {
+        margin-top: 12px;
+        border-top: 1px solid #ccc;
+        padding-top: 10px;
+        font-size: 13px;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+
+    .collapsible {
+        cursor: pointer;
+        background-color: #eee;
+        padding: 5px;
+        border-radius: 4px;
+        margin-bottom: 5px;
+    }
+
+    .collapsible-content { display: none; padding-left: 10px; }
+
+    /* Alternating row colors in metadata and agent profiles */
+    .meta-row-odd  { background: #f2f2f2; padding: 3px; border-radius: 3px; white-space: pre-wrap; }
+    .meta-row-even { background: #e6f0ff; padding: 3px; border-radius: 3px; white-space: pre-wrap; }
+
+    .highlight { background-color: #ffff99; }
+
+    .button-bar { text-align: center; margin: 20px 0; }
+    button, input { padding: 6px 12px; font-size: 14px; margin-right: 6px; }
+
+</style>
+</head>
+
+<body>
+
+<h2>CSV Post Viewer</h2>
+
+<input type="file" id="csvFile" accept=".csv" />
+<div id="status"></div>
+
+<div class="button-bar">
+    <button onclick="prevRow()">← Previous</button>
+    <button onclick="nextRow()">Next →</button>
+
+    Jump to row:
+    <input type="number" id="jumpInput" min="1" style="width: 60px;" oninput="jumpToRow()" />
+
+    Search post_id:
+    <input type="text" id="searchPostId" style="width: 100px;" />
+    <button onclick="searchPostId()">Search</button>
+
+    <span id="chain_index"></span>
+</div>
+
+<div class="container">
+
+    <!-- POST -->
+    <div class="column">
+        <h3>POST</h3>
+
+        <div class="field-label">Time:</div>
+        <div id="post_time"></div>
+
+        <div class="field-label">Author:</div>
+        <div id="post_author"></div>
+
+        <div class="field-label">Text:</div>
+        <textarea id="post_text" readonly></textarea>
+
+        <div class="meta-block">
+            <div class="collapsible" onclick="toggleCollapse(this)">Post Metadata ▼</div>
+            <div class="collapsible-content" id="post_meta"></div>
+        </div>
+
+        <div class="meta-block">
+            <div class="collapsible" onclick="toggleCollapse(this)">Post Agent Profile ▼</div>
+            <div class="collapsible-content" id="post_agent_profile"></div>
+        </div>
+    </div>
+
+    <!-- SOURCE -->
+    <div class="column">
+        <h3>SOURCE</h3>
+
+        <div class="field-label">Time:</div>
+        <div id="source_time"></div>
+
+        <div class="field-label">Author:</div>
+        <div id="source_author"></div>
+
+        <div class="field-label">Text:</div>
+        <textarea id="source_text" readonly></textarea>
+
+        <div class="meta-block">
+            <div class="collapsible" onclick="toggleCollapse(this)">Source Metadata ▼</div>
+            <div class="collapsible-content" id="source_meta"></div>
+        </div>
+
+        <div class="meta-block">
+            <div class="collapsible" onclick="toggleCollapse(this)">Source Agent Profile ▼</div>
+            <div class="collapsible-content" id="source_agent_profile"></div>
+        </div>
+    </div>
+
+    <!-- TARGET -->
+    <div class="column">
+        <h3>TARGET</h3>
+
+        <div class="field-label">Time:</div>
+        <div id="target_time"></div>
+
+        <div class="field-label">Author:</div>
+        <div id="target_author"></div>
+
+        <div class="field-label">Text:</div>
+        <textarea id="target_text" readonly></textarea>
+
+        <div class="meta-block">
+            <div class="collapsible" onclick="toggleCollapse(this)">Target Metadata ▼</div>
+            <div class="collapsible-content" id="target_meta"></div>
+        </div>
+
+        <div class="meta-block">
+            <div class="collapsible" onclick="toggleCollapse(this)">Target Agent Profile ▼</div>
+            <div class="collapsible-content" id="target_agent_profile"></div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+let csvData = [];
+let currentIndex = 0;
+
+document.getElementById("csvFile").addEventListener("change", function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: function(results) {
+            csvData = results.data;
+            document.getElementById("status").innerText =
+                "Loaded " + csvData.length + " rows.";
+            displayRow(0);
+        }
+    });
+});
+
+function displayRow(index) {
+    if (index < 0 || index >= csvData.length) return;
+    currentIndex = index;
+    let row = csvData[index];
+
+    document.getElementById("chain_index").innerText =
+        ` | Row ${currentIndex + 1} / ${csvData.length} | Post ID: ${row.post_id}`;
+
+    set("post_time", row["post_time"]);
+    set("post_author", row["post_author"]);
+    set("post_text", row["post_text"]);
+
+    set("source_time", row["source_time"]);
+    set("source_author", row["source_author"]);
+    set("source_text", row["source_text"]);
+
+    set("target_time", row["target_time"]);
+    set("target_author", row["target_author"]);
+    set("target_text", row["target_text"]);
+
+    setMetadata("post_meta", row, "post_");
+    setMetadata("source_meta", row, "source_");
+    setMetadata("target_meta", row, "target_");
+
+    // Pretty-print agent profile JSON in collapsible
+    setAgentProfile("post_agent_profile", row["post_agent_profile"]);
+    setAgentProfile("source_agent_profile", row["source_agent_profile"]);
+    setAgentProfile("target_agent_profile", row["target_agent_profile"]);
+
+    highlightDifferences();
+}
+
+function set(id, value) {
+    let el = document.getElementById(id);
+    if (el.value !== undefined) el.value = value || "";
+    else el.innerText = value || "";
+}
+
+function setMetadata(containerId, row, prefix) {
+    let container = document.getElementById(containerId);
+    container.innerHTML = "";
+
+    let index = 0;
+
+    Object.keys(row).forEach(col => {
+        if (!col.startsWith(prefix)) return;
+        if (["post_text","source_text","target_text","post_comments","post_agent_profile","source_agent_profile","target_agent_profile"].includes(col)) return;
+
+        let value = row[col];
+        if (value === "" || value === undefined || value === null) return;
+
+        let div = document.createElement("div");
+        div.className = (index % 2 === 0) ? "meta-row-even" : "meta-row-odd";
+        index++;
+
+        div.textContent = col + ": " + value;
+        container.appendChild(div);
+    });
+}
+
+function setAgentProfile(containerId, jsonStr) {
+    let container = document.getElementById(containerId);
+    container.innerHTML = "";
+    if (!jsonStr) return;
+
+    try {
+        let obj = JSON.parse(jsonStr);
+        let pretty = JSON.stringify(obj, null, 2).split("\n");
+
+        pretty.forEach((line, idx) => {
+            let div = document.createElement("div");
+            div.className = (idx % 2 === 0) ? "meta-row-even" : "meta-row-odd";
+            div.textContent = line;
+            container.appendChild(div);
+        });
+    } catch (e) {
+        container.textContent = jsonStr; // fallback if not valid JSON
+    }
+}
+
+function toggleCollapse(el) {
+    let content = el.nextElementSibling;
+    if (content.style.display === "block") {
+        content.style.display = "none";
+        el.textContent = el.textContent.replace("▲","▼");
+    } else {
+        content.style.display = "block";
+        el.textContent = el.textContent.replace("▼","▲");
+    }
+}
+
+function nextRow() {
+    if (currentIndex < csvData.length - 1) displayRow(currentIndex + 1);
+}
+
+function prevRow() {
+    if (currentIndex > 0) displayRow(currentIndex - 1);
+}
+
+function jumpToRow() {
+    let val = parseInt(document.getElementById("jumpInput").value);
+    if (!isNaN(val) && val >= 1 && val <= csvData.length)
+        displayRow(val - 1);
+}
+
+function searchPostId() {
+    let query = document.getElementById("searchPostId").value.trim();
+    if (!query) return;
+
+    let idx = csvData.findIndex(r => r.post_id === query || r.post_id.slice(0, -2) === query);
+
+    if (idx === -1) {
+        alert("post_id not found in CSV.");
+        return;
+    }
+
+    displayRow(idx);
+}
+
+function highlightDifferences() {
+    let sourceText = document.getElementById("source_text").value || "";
+    let targetText = document.getElementById("target_text").value || "";
+    let postText = document.getElementById("post_text").value || "";
+
+    if (sourceText !== targetText || postText !== targetText) {
+        document.getElementById("target_text").classList.add("highlight");
+    } else {
+        document.getElementById("target_text").classList.remove("highlight");
+    }
+}
+</script>
+
+</body>
+</html>
